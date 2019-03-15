@@ -216,7 +216,7 @@ run.umap <- function(exprs, hvg = NULL, n_dims=2){
   }
 
   #u <- umap::umap(t(exprs), method="umap-learn", metric="correlation", min_dist=.3, n_neighbors=30, n_components=n_dims)
-  u <- umap$UMAP(t(exprs), metric = "correlation", min_dist = .3, n_neighbors = 30L, n_components = as.integer(n_dims))
+  u <- umap$UMAP(metric = "correlation", min_dist = .3, n_neighbors = 30L, n_components = as.integer(n_dims))$fit_transform(t(exprs))
   rownames(u) <- colnames(exprs)
   return(u)
 }
