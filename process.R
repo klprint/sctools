@@ -138,12 +138,13 @@ make.analysis <- function(ex.path, ft.path, sample.name, V=2,
   ft <- ft[,colnames(ft)[ft.scrub <= ft.scrub.cut]]
   ex <- ex[,colnames(ex)[ex.scrub <= ex.scrub.cut]]
 
-  empty.drops <- empty.drops[rownames(ft),
-                             colSums(empty.drops>0) < empty.cut & colSums(empty.drops>0) != 0]
 
   ft <- ft[rowSums(ft>0) >= min.cells,
            colSums(ft>0) >= min.genes]
   ex <- ex[,colnames(ex) %in% colnames(ft)]
+
+  empty.drops <- empty.drops[rownames(ft),
+                             colSums(empty.drops>0) < empty.cut & colSums(empty.drops>0) != 0]
 
   return(list(FT=ft, EXON=ex, META=meta,
               empty = empty.drops))
