@@ -119,10 +119,8 @@ make.analysis <- function(ex.path, ft.path, sample.name, V=2,
   keep.cells <- meta %>% filter(fracIntronic >= cut.fracIntron, CellRank <= maxCellRank) %>% pull(CellID) %>% as.character()
 
   ft <- ft[,keep.cells]
-  ft <- ft[rowSums(ft>0) >= min.cells,
-           colSums(ft>0) >= min.genes]
   ex <- ex[,keep.cells]
-  ex <- ex[,colnames(ex) %in% colnames(ft)]
+
 
   cat("Removing doublets\n")
   ft.scrub <- scrublet(ft)
@@ -141,6 +139,10 @@ make.analysis <- function(ex.path, ft.path, sample.name, V=2,
   ex <- ex[,colnames(ex)[ex.scrub <= ex.scrub.cut]]
 
   empty.drops <- empty.drops[,colSums(empty.drops>0) < empty.cut & colSums(empty.drops>0) != 0]
+
+  ft <- ft[rowSums(ft>0) >= min.cells,
+           colSums(ft>0) >= min.genes]
+  ex <- ex[,colnames(ex) %in% colnames(ft)]
 
   return(list(FT=ft, EXON=ex, META=meta,
               empty = empty.drops))
