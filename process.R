@@ -138,6 +138,9 @@ make.analysis <- function(ex.path, ft.path, sample.name, V=2,
   ft <- ft[,colnames(ft)[ft.scrub <= ft.scrub.cut]]
   ex <- ex[,colnames(ex)[ex.scrub <= ex.scrub.cut]]
 
+  print(dim(ft))
+  print(dim(empty.drops))
+
   empty.drops <- empty.drops[,colSums(empty.drops>0) < empty.cut & colSums(empty.drops>0) != 0]
 
   ft <- ft[rowSums(ft>0) >= min.cells,
