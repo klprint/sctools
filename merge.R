@@ -67,12 +67,27 @@ if( length( args ) < 1  ){
 }
 
 sample.folders <- strsplit(args[1], ",")[[1]]
+outputfolder <- args[2]
 
-cat("Reding the data\n")
+cat("Reading the data\n")
 
 hvgs <- NULL
+exprs.list <- list()
+i <- 1
 for(s in sample.folders){
+  cat("Reading ", s, "\n")
   hvgs <- union(hvgs, read.table(file.path(s, "HVG.csv"))[,1])
+  exprs.list[[i]] <- read.table(file.path(s, "matrices", "FT_expression.csv.gz"), sep=",", header=T, row.names = 1)
+  print(exprs.list[[i]][1:5,1:5])
 }
 
-print(length(hvgs))
+cat("Number of highly variable genes read from files: ", length(hvgs), "\n")
+
+cat("Merging the matrices\n")
+merged <- union.merge(exprs.list, hvgs)
+
+cat("Running UMAP\n")
+cat("\t 2D\n")
+umap2d <- run.umap(merged)
+cat("\t 3D\n")
+umap2d <- run.umap(merged, n_dims=3)

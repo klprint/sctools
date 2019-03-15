@@ -79,7 +79,8 @@ make.analysis <- function(ex.path, ft.path, sample.name, V=2,
                           empty.cut = 50,
                           max.cellrank = 1e4,
                           man.select = list(cutFracIntron = NULL,
-                                            maxCellRank = NULL)){
+                                            maxCellRank = NULL),
+                          min.cells = 25, min.genes=500){
   cat("Reading exon\n")
   ex <- get.10x.data(ex.path, sample.name, V=V)
   cat("Reading pre-mRNA\n")
@@ -118,7 +119,10 @@ make.analysis <- function(ex.path, ft.path, sample.name, V=2,
   keep.cells <- meta %>% filter(fracIntronic >= cut.fracIntron, CellRank <= maxCellRank) %>% pull(CellID) %>% as.character()
 
   ft <- ft[,keep.cells]
+  ft <- ft[rowSums(ft>0) >= min.cells,
+           colSums(ft>0) >= min.genes]
   ex <- ex[,keep.cells]
+  ex <- ex[,colnames(ex) %in% colnames(ft)]
 
   cat("Removing doublets\n")
   ft.scrub <- scrublet(ft)
@@ -201,12 +205,16 @@ find.hvg <- function(exprs, is.umi = T, min.genes=500, min.cells=25){
 }
 
 run.umap <- function(exprs, hvg = NULL, n_dims=2){
+  umap <- import("umap")
+
   if(!is.null(hvg)){
     exprs <- exprs[hvg,]
   }
 
-  u <- umap::umap(t(exprs), method="umap-learn", metric="correlation", min_dist=.3, n_neighbors=30, n_components=n_dims)
-  return(u$layout)
+  #u <- umap::umap(t(exprs), method="umap-learn", metric="correlation", min_dist=.3, n_neighbors=30, n_components=n_dims)
+  u <- umap$UMAP(t(exprs), metric = "correlation", min_dist = .3, n_neighbors = 30L, n_components = as.integer(n_dims))
+  rownames(u) <- colnames(exprs)
+  return(u)
 }
 
 union.merge <- function(mergelist, all.rn = NULL){
