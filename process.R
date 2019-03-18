@@ -6,6 +6,7 @@ py_config()
 library(tidyverse)
 library(mclust)
 library(Matrix)
+library(hdf5r)
 
 
 get.10x.data <- function(path, sample.name, V = 2, mtx_name = "matrix.mtx", genes_name = "genes.tsv", barcodes_name = "barcodes.tsv"){
@@ -284,10 +285,10 @@ if( length( args ) < 3  ){
   stop("At least three arguments need to be provided", call. = F)
 }else if( length( args ) == 3  ){
   args[4] <- "2"
-  args[5] <- "BG_removed_output"
 }
 
 args[4] <- as.numeric(args[4])
+args[5] <- "bg_removed"
 
 out.dir <- file.path(args[5], args[3])
 dir.create(out.dir, recursive = T, showWarnings = F)
@@ -342,30 +343,64 @@ ggplot(
 
 dev.off()
 
-cat("Writing UMAPS\n")
+# cat("Writing UMAPS\n")
 umap2d <- as.data.frame(umap2d.dfl)
 colnames(umap2d) <- c("UMAP1", "UMAP2")
-write.table(umap2d, file=file.path(out.dir, "2D_UMAP.csv"), quote=F, sep=",", col.names = T)
+umap2d <- umap2d %>% rownames_to_column("CellID")
+# write.table(umap2d, file=file.path(out.dir, "2D_UMAP.csv"), quote=F, sep=",", col.names = T, row.names = F)
 umap3d <- as.data.frame(umap3d.dfl)
 colnames(umap3d) <- c("UMAP1", "UMAP2", "UMAP3")
-write.table(umap3d, file=file.path(out.dir, "3D_UMAP.csv"), quote=F, sep=",", col.names = T)
+umap3d <- umap3d %>% rownames_to_column("CellID")
+# write.table(umap3d, file=file.path(out.dir, "3D_UMAP.csv"), quote=F, sep=",", col.names = T, row.names = F)
+#
+# cat("Writing the output files\n")
+# mat.outdir <- file.path(out.dir, "matrices")
+# dir.create(mat.outdir, showWarnings = F, recursive = T)
+#
+# cat(" Writing full transcript\n")
+# ft.mtx <- gzfile(file.path(mat.outdir, "full_transcript.csv.gz"))
+# write.table(as.matrix(dfl$umi$FT), ft.mtx, sep=",", quote = F)
+#
+# cat(" Writing exon only\n")
+# ex.mtx <- gzfile(file.path(mat.outdir, "exon.csv.gz"))
+# write.table(as.matrix(dfl$umi$EXON), ex.mtx, sep=",", quote = F)
+#
+# cat(" Writing HVG list\n")
+# write.table(data.frame(dfl$hvg), file=file.path(out.dir, "HVG.csv"), quote = F, sep=",", row.names = F, col.names = F)
+#
 
-cat("Writing the output files\n")
-mat.outdir <- file.path(out.dir, "matrices")
-dir.create(mat.outdir, showWarnings = F, recursive = T)
+cat("Writing data")
 
-cat(" Writing full transcript\n")
-ft.mtx <- gzfile(file.path(mat.outdir, "full_transcript.csv.gz"))
-write.table(as.matrix(dfl$umi$FT), ft.mtx, sep=",", quote = F)
+h5file <- H5File$new(file.path(out.dir, "data.h5"), mode="w")
 
-cat(" Writing exon only\n")
-ex.mtx <- gzfile(file.path(mat.outdir, "exon.csv.gz"))
-write.table(as.matrix(dfl$umi$EXON), ex.mtx, sep=",", quote = F)
+# Creating file structure
+h5file$create_group("umi")
+h5file[["umi"]]$create_group("ft")
+h5file[["umi"]]$create_group("exon")
 
-cat(" Writing expression matrix (FT based)\n")
-exprs.mtx <- gzfile(file.path(mat.outdir, "FT_expression.csv.gz"))
-write.table(as.matrix(dfl$exprs), exprs.mtx, sep=",", quote = F)
+h5file$create_group("umap")
 
-cat(" Writing HVG list\n")
-write.table(data.frame(dfl$hvg), file=file.path(out.dir, "HVG.csv"), quote = F, sep=",", row.names = F, col.names = F)
+h5file[["umi"]][["ft"]][["counts"]] <- as.matrix(dfl$umi$FT)
+h5file[["umi"]][["ft"]][["genes"]] <- rownames(dfl$umi$FT)
+h5file[["umi"]][["ft"]][["cells"]] <- colnames(dfl$umi$FT)
+h5file[["umi"]][["ft"]][["sf"]] <- colSums(dfl$umi$FT)
+h5file[["umi"]][["ft"]][["hvg"]]<- dfl$hvg
+
+h5file[["umi"]][["exon"]][["counts"]] <- as.matrix(dfl$umi$EXON)
+h5file[["umi"]][["exon"]][["genes"]] <- rownames(dfl$umi$EXON)
+h5file[["umi"]][["exon"]][["cells"]] <- colnames(dfl$umi$EXON)
+h5file[["umi"]][["exon"]][["sf"]] <- colSums(dfl$umi$EXON)
+
+h5file[["umap"]][["2d"]] <- umap2d
+h5file[["umap"]][["3d"]] <- umap3d
+
+h5file$create_group("exprs")
+h5file[["exprs"]][["mat"]] <- as.matrix(dfl$exprs)
+h5file[["exprs"]][["genes"]] <- rownames(dfl$exprs)
+h5file[["exprs"]][["cells"]] <- colnames(dfl$exprs)
+
+
+h5file$close_all()
+write.table(umap2d, file=file.path(out.dir, "2D_UMAP.csv"), quote=F, sep=",", col.names = T, row.names = F)
+write.table(umap3d, file=file.path(out.dir, "3D_UMAP.csv"), quote=F, sep=",", col.names = T, row.names = F)
 

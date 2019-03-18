@@ -6,14 +6,20 @@ py_config()
 library(tidyverse)
 library(mclust)
 library(Matrix)
+library(hdf5r)
 
 run.umap <- function(exprs, hvg = NULL, n_dims=2){
+  umap <- import("umap")
+
   if(!is.null(hvg)){
     exprs <- exprs[hvg,]
   }
 
-  u <- umap::umap(t(exprs), method="umap-learn", metric="correlation", min_dist=.3, n_neighbors=30, n_dimensions=n_dims)
-  return(u$layout)
+  #u <- umap::umap(t(exprs), method="umap-learn", metric="correlation", min_dist=.3, n_neighbors=30, n_components=n_dims)
+  u <- umap$UMAP(metric = "correlation", min_dist = .3, n_neighbors = 30L, n_components = as.integer(n_dims))$fit_transform(t(exprs))
+  rownames(u) <- colnames(exprs)
+  print(head(u))
+  return(u)
 }
 
 union.merge <- function(mergelist, all.rn = NULL){
@@ -69,6 +75,11 @@ if( length( args ) < 1  ){
 sample.folders <- strsplit(args[1], ",")[[1]]
 outputfolder <- args[2]
 
+if(is.na(outputfolder)){
+  outputfolder <- "bgr_merged"
+}
+
+dir.create(outputfolder)
 cat("Reading the data\n")
 
 hvgs <- NULL
@@ -76,18 +87,44 @@ exprs.list <- list()
 i <- 1
 for(s in sample.folders){
   cat("Reading ", s, "\n")
-  hvgs <- union(hvgs, read.table(file.path(s, "HVG.csv"))[,1])
-  exprs.list[[i]] <- read.table(file.path(s, "matrices", "FT_expression.csv.gz"), sep=",", header=T, row.names = 1)
+  h5file <- H5File$new(file.path(s, "data.h5"), mode = "r")
+  hvgs <- union(hvgs, h5file[["umi"]][["ft"]][["hvg"]][])
+  all.genes <- h5file[["exprs"]][["genes"]][]
+
+  tmp <- as.matrix(h5file[["exprs"]][["mat"]][
+    all.genes %in% hvgs,
+  ])
+
+  colnames(tmp) <- h5file[["exprs"]][["cells"]][]
+
+  h5file$close_all()
+
+  rownames(tmp) <- all.genes[
+    all.genes %in% hvgs
+  ]
+
+  exprs.list[[i]] <- tmp
   print(exprs.list[[i]][1:5,1:5])
+
+  i <- i+1
 }
 
 cat("Number of highly variable genes read from files: ", length(hvgs), "\n")
 
 cat("Merging the matrices\n")
-merged <- union.merge(exprs.list, hvgs)
+exprs <- union.merge(exprs.list, hvgs)
+
 
 cat("Running UMAP\n")
 cat("\t 2D\n")
-umap2d <- run.umap(merged)
+umap2d <- run.umap(exprs)
 cat("\t 3D\n")
-umap2d <- run.umap(merged, n_dims=3)
+umap3d <- run.umap(exprs, n_dims=3)
+umap3d <- as.data.frame(umap3d) %>% rownames_to_column("CellID")
+colnames(umap3d) <- c("CellID", "UMAP1", "UMAP2", "UMAP3")
+
+
+umap3d <- umap3d %>% add_column(Batch = do.call("c", lapply(umap3d$CellID, function(x) strsplit(x, "_")[[1]][2])))
+
+write.table(umap3d, file=file.path(outputfolder, "UMAP3d.csv"), sep=",", quote = F, row.names = F)
+
