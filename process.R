@@ -200,7 +200,7 @@ find.hvg <- function(exprs, is.umi = T, min.genes=500, min.cells=25){
   vars <- apply(exprs, 1, var)
   disp <- vars/means
 
-  cutoff <- mean(disp,na.rm=T) + sd(disp,na.rm = T)
+  cutoff <- mean(disp,na.rm=T)
 
   plot(means, disp, log="xy",pch=".")
   abline(h=cutoff)
