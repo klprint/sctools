@@ -127,4 +127,3 @@ colnames(umap3d) <- c("CellID", "UMAP1", "UMAP2", "UMAP3")
 umap3d <- umap3d %>% add_column(Batch = do.call("c", lapply(umap3d$CellID, function(x) strsplit(x, "_")[[1]][2])))
 
 write.table(umap3d, file=file.path(outputfolder, "UMAP3d.csv"), sep=",", quote = F, row.names = F)
-

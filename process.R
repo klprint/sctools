@@ -281,6 +281,14 @@ args = commandArgs(trailingOnly=TRUE)
 # 4. 10x Chromium version
 # 5. Output main folder
 print(args)
+if(args[1] == "help" | args[1] == "--help" | args[1] == "-h"){
+  cat("1. Exon output path
+2. Full transcript output path
+3. Sample name
+4. 10x Chromium version
+5. Output main folder")
+  stop("No arguments given", call. = F)
+}
 if( length( args ) < 3  ){
   stop("At least three arguments need to be provided", call. = F)
 }else if( length( args ) == 3  ){
@@ -377,8 +385,7 @@ h5file <- H5File$new(file.path(out.dir, "data.h5"), mode="w")
 h5file$create_group("umi")
 h5file[["umi"]]$create_group("ft")
 h5file[["umi"]]$create_group("exon")
-
-h5file$create_group("umap")
+h5file[["umi"]]$create_group("empty")
 
 h5file[["umi"]][["ft"]][["counts"]] <- as.matrix(dfl$umi$FT)
 h5file[["umi"]][["ft"]][["genes"]] <- rownames(dfl$umi$FT)
@@ -391,13 +398,18 @@ h5file[["umi"]][["exon"]][["genes"]] <- rownames(dfl$umi$EXON)
 h5file[["umi"]][["exon"]][["cells"]] <- colnames(dfl$umi$EXON)
 h5file[["umi"]][["exon"]][["sf"]] <- colSums(dfl$umi$EXON)
 
+h5file[["umi"]][["empty"]][["counts"]] <- rowSums(dfl$umi$empty)
+h5file[["umi"]][["empty"]][["genes"]] <- rownames(dfl$umi$empty)
+
+
+h5file$create_group("umap")
 h5file[["umap"]][["2d"]] <- umap2d
 h5file[["umap"]][["3d"]] <- umap3d
 
-h5file$create_group("exprs")
-h5file[["exprs"]][["mat"]] <- as.matrix(dfl$exprs)
-h5file[["exprs"]][["genes"]] <- rownames(dfl$exprs)
-h5file[["exprs"]][["cells"]] <- colnames(dfl$exprs)
+# h5file$create_group("exprs")
+# h5file[["exprs"]][["mat"]] <- as.matrix(dfl$exprs)
+# h5file[["exprs"]][["genes"]] <- rownames(dfl$exprs)
+# h5file[["exprs"]][["cells"]] <- colnames(dfl$exprs)
 
 
 h5file$close_all()
