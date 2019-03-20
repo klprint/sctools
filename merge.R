@@ -111,9 +111,10 @@ for(s in sample.folders){
 
 cat("Number of highly variable genes read from files: ", length(hvgs), "\n")
 
+
 cat("Merging the matrices\n")
 exprs <- union.merge(exprs.list, hvgs)
-
+cat("Number of cells: ", ncol(exprs))
 
 cat("Running UMAP\n")
 cat("\t 2D\n")
