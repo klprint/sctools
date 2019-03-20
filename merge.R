@@ -63,6 +63,19 @@ plot.umap <- function(umap.coords){
   )
 }
 
+remove.background <- function(exprs, empty.drops){
+  stopifnot(sum(rownames(umi) == rownames(empty.drops)) == nrow(exprs))
+
+  exprs.drops <- matrix(sqrt(empty.drops/colSums(empty.drops)), ncol=1)
+  rownames(exprs.drops) <- rownames(empty.drops)
+  cat("Calculating dot product \n")
+  dp <- t(exprs) %*% exprs.drops
+  print(head(dp))
+
+  cat("Linear regression\n")
+  lmout <- lm(as.matrix(t(exprs)) ~ as.matrix(dp))$residuals
+  return(t(lmout))
+}
 
 #### MAIN ####
 args = commandArgs(trailingOnly=TRUE)
@@ -89,19 +102,40 @@ for(s in sample.folders){
   cat("Reading ", s, "\n")
   h5file <- H5File$new(file.path(s, "data.h5"), mode = "r")
   hvgs <- union(hvgs, h5file[["umi"]][["ft"]][["hvg"]][])
-  all.genes <- h5file[["exprs"]][["genes"]][]
+  all.genes <- h5file[["umi"]][["ft"]][["genes"]][]
 
-  tmp <- as.matrix(h5file[["exprs"]][["mat"]][
+  tmp <- as.matrix(h5file[["umi"]][["ft"]][["counts"]][
     all.genes %in% hvgs,
   ])
 
-  colnames(tmp) <- h5file[["exprs"]][["cells"]][]
+  colnames(tmp) <- h5file[["umi"]][["ft"]][["cells"]][]
+  sf <- h5file[["umi"]][["ft"]][["sf"]][]
+
+  empty.genes <- h5file[["umi"]][["empty"]][["genes"]][]
+  empty.drops <- h5file[["umi"]][["empty"]][["counts"]][
+    empty.genes %in% hvgs
+  ]
+
+  empty.drops <- matrix(empty.drops, ncol=1)
+  rownames(empty.drops) <- empty.genes[empty.genes %in% hvgs]
 
   h5file$close_all()
 
   rownames(tmp) <- all.genes[
     all.genes %in% hvgs
   ]
+
+  cat("Normalizing\n")
+  tmp <- sqrt(tmp/sf)
+
+  empty.drops <- empty.drops[hvgs, ]
+  empty.drops <- matrix(empty.drops, ncol=1)
+  rownames(empty.drops) <- hvgs
+  tmp <- tmp[hvgs, ]
+
+  stopifnot(nrow(empty.drops) == nrow(tmp))
+
+  tmp <- remove.background(tmp, empty.drops)
 
   exprs.list[[i]] <- tmp
   print(exprs.list[[i]][1:5,1:5])
@@ -117,8 +151,8 @@ exprs <- union.merge(exprs.list, hvgs)
 cat("Number of cells: ", ncol(exprs))
 
 cat("Running UMAP\n")
-cat("\t 2D\n")
-umap2d <- run.umap(exprs)
+# cat("\t 2D\n")
+# umap2d <- run.umap(exprs)
 cat("\t 3D\n")
 umap3d <- run.umap(exprs, n_dims=3)
 umap3d <- as.data.frame(umap3d) %>% rownames_to_column("CellID")
