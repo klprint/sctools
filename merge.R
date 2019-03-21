@@ -64,7 +64,7 @@ plot.umap <- function(umap.coords){
 }
 
 remove.background <- function(exprs, empty.drops){
-  stopifnot(sum(rownames(umi) == rownames(empty.drops)) == nrow(exprs))
+  stopifnot(sum(rownames(exprs) == rownames(empty.drops)) == nrow(exprs))
 
   exprs.drops <- matrix(sqrt(empty.drops/colSums(empty.drops)), ncol=1)
   rownames(exprs.drops) <- rownames(empty.drops)
@@ -103,38 +103,58 @@ for(s in sample.folders){
   h5file <- H5File$new(file.path(s, "data.h5"), mode = "r")
   hvgs <- union(hvgs, h5file[["umi"]][["ft"]][["hvg"]][])
   all.genes <- h5file[["umi"]][["ft"]][["genes"]][]
+  cids <- h5file[["umi"]][["ft"]][["cells"]][]
 
+  missing.genes <- hvgs[!(hvgs %in% all.genes)]
+  present.genes <- hvgs[hvgs %in% all.genes]
+
+  cat("  empty droplets\n")
+  empty.genes <- h5file[["umi"]][["empty"]][["genes"]][]
+  empty.drops <- matrix(h5file[["umi"]][["empty"]][["counts"]][empty.genes %in% present.genes], ncol=1)
+  rownames(empty.drops) <- empty.genes[empty.genes %in% present.genes]
+
+  if(length(missing.genes) > 0){
+    filling.mat <- matrix(0, nrow = length(missing.genes),
+                          ncol=length(cids))
+    rownames(filling.mat) <- missing.genes
+  }
+
+  cat("  UMI matrix\n")
   tmp <- as.matrix(h5file[["umi"]][["ft"]][["counts"]][
-    all.genes %in% hvgs,
+    all.genes %in% present.genes,
   ])
+  rownames(tmp) <- all.genes[all.genes %in% present.genes]
+
+  if(length(missing.genes) > 0){
+    cat("Filling genes (",length(missing.genes),")\n")
+    tmp <- rbind(tmp, filling.mat)
+    empty.drops <- matrix(c(empty.drops[,1], rep(0, length(missing.genes))), ncol=1)
+    rownames(empty.drops) <- c(present.genes, missing.genes)
+  }
+
+  tmp <- tmp[hvgs, ]
+  empty.drops <- matrix(empty.drops[hvgs, ],ncol=1)
+  rownames(empty.drops) <- hvgs
+  cat("------------------\n")
+  print(head(tmp[,1:5]))
+  print(head(empty.drops))
+  cat("------------------\n")
 
   colnames(tmp) <- h5file[["umi"]][["ft"]][["cells"]][]
   sf <- h5file[["umi"]][["ft"]][["sf"]][]
 
-  empty.genes <- h5file[["umi"]][["empty"]][["genes"]][]
-  empty.drops <- h5file[["umi"]][["empty"]][["counts"]][
-    empty.genes %in% hvgs
-  ]
-
-  empty.drops <- matrix(empty.drops, ncol=1)
-  rownames(empty.drops) <- empty.genes[empty.genes %in% hvgs]
-
   h5file$close_all()
-
-  rownames(tmp) <- all.genes[
-    all.genes %in% hvgs
-  ]
 
   cat("Normalizing\n")
   tmp <- sqrt(tmp/sf)
+  # empty.drops <- matrix(sqrt(empty.drops / sum(empty.drops[,1])),
+  #                       ncol=1)
+  # rownames(empty.drops) <- hvgs
 
-  empty.drops <- empty.drops[hvgs, ]
-  empty.drops <- matrix(empty.drops, ncol=1)
-  rownames(empty.drops) <- hvgs
-  tmp <- tmp[hvgs, ]
 
   stopifnot(nrow(empty.drops) == nrow(tmp))
 
+  cat("Removing backgorund\n")
   tmp <- remove.background(tmp, empty.drops)
 
   exprs.list[[i]] <- tmp
@@ -148,7 +168,7 @@ cat("Number of highly variable genes read from files: ", length(hvgs), "\n")
 
 cat("Merging the matrices\n")
 exprs <- union.merge(exprs.list, hvgs)
-cat("Number of cells: ", ncol(exprs))
+cat("Number of cells: ", ncol(exprs), "\n")
 
 cat("Running UMAP\n")
 # cat("\t 2D\n")
