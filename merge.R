@@ -171,14 +171,19 @@ exprs <- union.merge(exprs.list, hvgs)
 cat("Number of cells: ", ncol(exprs), "\n")
 
 cat("Running UMAP\n")
-# cat("\t 2D\n")
-# umap2d <- run.umap(exprs)
+cat("Running UMAP\n")
+cat("\t 2D\n")
+pca <- irlba::prcomp_irlba(t(exprs), n = 100)
+rownames(pca$x) <- colnames(exprs)
+umap2d <- run.umap(t(pca$x))
+umap2d <- as.data.frame(umap2d) %>% rownames_to_column("CellID")
+colnames(umap2d) <- c("CellID", "UMAP1", "UMAP2")
+umap2d <- umap2d %>% add_column(Batch = do.call("c", lapply(umap2d$CellID, function(x) strsplit(x, "_")[[1]][2])))
+write.table(umap2d, file=file.path(outputfolder, "UMAP2d.csv"), sep=",", quote = F, row.names = F)
+
 cat("\t 3D\n")
-umap3d <- run.umap(exprs, n_dims=3)
+umap3d <- run.umap(t(pca$x), n_dims=3)
 umap3d <- as.data.frame(umap3d) %>% rownames_to_column("CellID")
 colnames(umap3d) <- c("CellID", "UMAP1", "UMAP2", "UMAP3")
-
-
 umap3d <- umap3d %>% add_column(Batch = do.call("c", lapply(umap3d$CellID, function(x) strsplit(x, "_")[[1]][2])))
-
 write.table(umap3d, file=file.path(outputfolder, "UMAP3d.csv"), sep=",", quote = F, row.names = F)
