@@ -97,6 +97,7 @@ cat("Reading the data\n")
 
 hvgs <- NULL
 exprs.list <- list()
+umi.list <- list()
 i <- 1
 for(s in sample.folders){
   cat("Reading ", s, "\n")
@@ -146,9 +147,10 @@ for(s in sample.folders){
   h5file$close_all()
 
   cat("Normalizing\n")
+
+  umi.list[[i]] <- tmp
+
   tmp <- sqrt(tmp/sf)
-
-
 
   exprs.list[[i]] <- tmp
 
@@ -161,7 +163,16 @@ cat("Number of genes read from files: ", length(hvgs), "\n")
 
 cat("Merging the matrices\n")
 exprs <- union.merge(exprs.list, hvgs)
+umi <- union.merge(umi.list, hvgs)
 cat("Number of cells: ", ncol(exprs), "\n")
+
+cat("Writing h5 file\n")
+h5file <- H5File$new(file.path(outputfolder, "Merged_Matrix.h5"), mode="w")
+h5file[["umi"]] <- umi
+h5file[["exprs"]] <- exprs
+h5file[["cells"]] <- colnames(umi)
+h5file[["genes"]] <- rownames(umi)
+h5file$close_all()
 
 gzout <- gzfile(file.path(outputfolder, "Merged_Matrix.csv.gz"))
 write.table(exprs, gzout, sep=",", quote = F)
