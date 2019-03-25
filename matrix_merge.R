@@ -147,18 +147,11 @@ for(s in sample.folders){
 
   cat("Normalizing\n")
   tmp <- sqrt(tmp/sf)
-  # empty.drops <- matrix(sqrt(empty.drops / sum(empty.drops[,1])),
-  #                       ncol=1)
-  # rownames(empty.drops) <- hvgs
 
 
-  stopifnot(nrow(empty.drops) == nrow(tmp))
-
-  cat("Removing backgorund\n")
-  tmp <- remove.background(tmp, empty.drops)
 
   exprs.list[[i]] <- tmp
-  print(exprs.list[[i]][1:5,1:5])
+
 
   i <- i+1
 }
