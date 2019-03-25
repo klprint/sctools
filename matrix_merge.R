@@ -101,8 +101,8 @@ i <- 1
 for(s in sample.folders){
   cat("Reading ", s, "\n")
   h5file <- H5File$new(file.path(s, "data.h5"), mode = "r")
-  hvgs <- union(hvgs, h5file[["umi"]][["ft"]][["hvg"]][])
-  all.genes <- h5file[["umi"]][["ft"]][["genes"]][]
+
+  hvgs <- all.genes <- h5file[["umi"]][["ft"]][["genes"]][]
   cids <- h5file[["umi"]][["ft"]][["cells"]][]
 
   missing.genes <- hvgs[!(hvgs %in% all.genes)]
@@ -156,12 +156,12 @@ for(s in sample.folders){
   i <- i+1
 }
 
-cat("Number of highly variable genes read from files: ", length(hvgs), "\n")
+cat("Number of genes read from files: ", length(hvgs), "\n")
 
 
 cat("Merging the matrices\n")
 exprs <- union.merge(exprs.list, hvgs)
 cat("Number of cells: ", ncol(exprs), "\n")
 
-gzout <- gzfile(outputfolder, "Merged_Matrix.csv.gz")
+gzout <- gzfile(file.path(outputfolder, "Merged_Matrix.csv.gz"))
 write.table(exprs, gzout, sep=",", quote = F)
