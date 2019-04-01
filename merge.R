@@ -97,12 +97,18 @@ cat("Reading the data\n")
 
 hvgs <- NULL
 exprs.list <- list()
+umi.exon <- list()
+umi.ft <- list()
 i <- 1
 for(s in sample.folders){
   cat("Reading ", s, "\n")
+
   h5file <- H5File$new(file.path(s, "data.h5"), mode = "r")
+
+  cat("  full transcript UMIs")
   hvgs <- union(hvgs, h5file[["umi"]][["ft"]][["hvg"]][])
   all.genes <- h5file[["umi"]][["ft"]][["genes"]][]
+  all.exon.genes <- h5file[["umi"]][["exon"]][["genes"]][]
   cids <- h5file[["umi"]][["ft"]][["cells"]][]
 
   missing.genes <- hvgs[!(hvgs %in% all.genes)]
