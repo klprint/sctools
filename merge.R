@@ -152,6 +152,7 @@ for(s in sample.folders){
   h5file$close_all()
 
   cat("Normalizing\n")
+  umi.ft[[i]] <- tmp
   tmp <- sqrt(tmp/sf)
   # empty.drops <- matrix(sqrt(empty.drops / sum(empty.drops[,1])),
   #                       ncol=1)
@@ -174,6 +175,7 @@ cat("Number of highly variable genes read from files: ", length(hvgs), "\n")
 
 cat("Merging the matrices\n")
 exprs <- union.merge(exprs.list, hvgs)
+umi <- union.merge(umi.ft, hvgs)
 cat("Number of cells: ", ncol(exprs), "\n")
 
 cat("Running UMAP\n")
@@ -193,3 +195,21 @@ umap3d <- as.data.frame(umap3d) %>% rownames_to_column("CellID")
 colnames(umap3d) <- c("CellID", "UMAP1", "UMAP2", "UMAP3")
 umap3d <- umap3d %>% add_column(Batch = do.call("c", lapply(umap3d$CellID, function(x) strsplit(x, "_")[[1]][2])))
 write.table(umap3d, file=file.path(outputfolder, "UMAP3d.csv"), sep=",", quote = F, row.names = F)
+
+
+cat("Writing HDF5 files\n")
+
+h5 <- H5File$new(file.path(outputfolder, "data.h5"), mode = "r+")
+
+h5[["umi_ft"]] <- umi
+h5[["umi_cells"]] <- colnames(umi)
+h5[["umi_genes"]] <- rownames(umi)
+
+h5[["exprs"]] <- exprs
+h5[["exprs_cells"]] <- colnames(exprs)
+h5[["exprs_genes"]] <- rownames(exprs)
+
+h5[["umap_2d"]] <- umap2d
+h5[["umap_3d"]] <- umap3d
+
+h5$close_all()
