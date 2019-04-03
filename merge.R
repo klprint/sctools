@@ -199,7 +199,7 @@ write.table(umap3d, file=file.path(outputfolder, "UMAP3d.csv"), sep=",", quote =
 
 cat("Writing HDF5 files\n")
 
-h5 <- H5File$new(file.path(outputfolder, "data.h5"), mode = "r+")
+h5 <- H5File$new(file.path(outputfolder, "data.h5"), mode = "w")
 
 h5[["umi_ft"]] <- umi
 h5[["umi_cells"]] <- colnames(umi)
