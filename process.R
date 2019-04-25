@@ -278,36 +278,73 @@ plot.umap <- function(umap.coords){
 }
 
 #### MAIN ####
-args = commandArgs(trailingOnly=TRUE)
+library(optparse)
 
-# 1. Exon output path
+optionList = list(
+  make_option(c("-e", "--exon"),
+              type="character",
+              default=NULL,
+              help = "Path to exon cellranger output (mtx file containing folder)",
+              metavar = "character"),
+
+  make_option(c("-i", "--intron"),
+              type="character",
+              default=NULL,
+              help="Path to full-transcript cellranger output (mtx file containing folder)",
+              metavar = "character"),
+
+  make_option(c("-n", "--name"),
+              type="character",
+              default=NULL,
+              help = "Sample name",
+              metavar = "character"),
+
+  make_option(c("-c", "--chromiumversion"),
+              type="integer",
+              default = 2,
+              help = "10x Chromium kit version [2|3]",
+              metavar = "integer"),
+
+  make_option(c("-o", "--output"),
+              type="character",
+              default = "bg_removed",
+              help = "Path of output folder",
+              metavar = "character")
+)
+
+opt_parser <- OptionParser(option_list = optionList)
+opt = parse_args(opt_parser)
+
+# args = commandArgs(trailingOnly=TRUE)
+#
+# # 1. Exon output path
+# # 2. Full transcript output path
+# # 3. Sample name
+# # 4. 10x Chromium version
+# # 5. Output main folder
+# print(args)
+# if(opt$exon == "help" | opt$exon == "--help" | opt$exon == "-h"){
+#   cat("1. Exon output path
 # 2. Full transcript output path
 # 3. Sample name
 # 4. 10x Chromium version
-# 5. Output main folder
-print(args)
-if(args[1] == "help" | args[1] == "--help" | args[1] == "-h"){
-  cat("1. Exon output path
-2. Full transcript output path
-3. Sample name
-4. 10x Chromium version
-5. Output main folder")
-  stop("No arguments given", call. = F)
-}
-if( length( args ) < 3  ){
-  stop("At least three arguments need to be provided", call. = F)
-}else if( length( args ) == 3  ){
-  args[4] <- "2"
-}
+# 5. Output main folder")
+#   stop("No arguments given", call. = F)
+# }
+# if( length( args ) < 3  ){
+#   stop("At least three arguments need to be provided", call. = F)
+# }else if( length( args ) == 3  ){
+#   opt$chromiumversion <- "2"
+# }
+#
+# opt$chromiumversion <- as.numeric(opt$chromiumversion)
+# opt$output <- "bg_removed"
 
-args[4] <- as.numeric(args[4])
-args[5] <- "bg_removed"
-
-out.dir <- file.path(args[5], args[3])
+out.dir <- file.path(opt$output, opt$name)
 dir.create(out.dir, recursive = T, showWarnings = F)
 
 pdf(file.path(out.dir, "plots.pdf"))
-dfl <- full.analysis(args[1], args[2], args[3], args[4])
+dfl <- full.analysis(opt$exon, opt$intron, opt$name, opt$chromiumversion)
 
 sobj <- Seurat::CreateSeuratObject(dfl$umi$FT)
 sobj@data <- sobj@scale.data <- dfl$exprs
@@ -333,7 +370,7 @@ ggplot(
   geom_histogram(bins = 100) +
   scale_x_log10() +
   xlab("log(nUMI)") +
-  ggtitle(paste0(args[3], " nUMI FT"))
+  ggtitle(paste0(opt$name, " nUMI FT"))
 
 ggplot(
   NULL,
@@ -342,7 +379,7 @@ ggplot(
   geom_histogram(bins = 100) +
   scale_x_log10() +
   xlab("log(nUMI)") +
-  ggtitle(paste0(args[3], " nUMI exonic"))
+  ggtitle(paste0(opt$name, " nUMI exonic"))
 
 ggplot(
   NULL,
@@ -351,7 +388,7 @@ ggplot(
   geom_histogram(bins = 100) +
   scale_x_log10() +
   xlab("log(nGene)") +
-  ggtitle(paste0(args[3], " nGene FT"))
+  ggtitle(paste0(opt$name, " nGene FT"))
 
 ggplot(
   NULL,
@@ -360,7 +397,7 @@ ggplot(
   geom_histogram(bins = 100) +
   scale_x_log10() +
   xlab("log(nGene)") +
-  ggtitle(paste0(args[3], " nGene exonic"))
+  ggtitle(paste0(opt$name, " nGene exonic"))
 
 dev.off()
 

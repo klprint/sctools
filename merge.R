@@ -78,19 +78,32 @@ remove.background <- function(exprs, empty.drops){
 }
 
 #### MAIN ####
-args = commandArgs(trailingOnly=TRUE)
+library(optparse)
 
-# 1. Comma separated list of "process.R" output folders
-if( length( args ) < 1  ){
-  stop("At least one arguments need to be provided", call. = F)
-}
+optList <- list(
+  make_option(c("-i", "--input"),
+              type="character",
+              help="Comma separated list of process.R outputs (one folder per sample)",
+              default = NULL,
+              metavar = "character"),
 
-sample.folders <- strsplit(args[1], ",")[[1]]
-outputfolder <- args[2]
+  make_option(c("-o", "--output"),
+              type="character",
+              help="Oputput folder",
+              default = "bgr_merged",
+              metavar = "character")
+)
+opt_parser <- OptionParser(option_list = optList)
+opt = parse_args(opt_parser)
+# args = commandArgs(trailingOnly=TRUE)
+#
+# # 1. Comma separated list of "process.R" output folders
+# if( length( args ) < 1  ){
+#   stop("At least one arguments need to be provided", call. = F)
+# }
 
-if(is.na(outputfolder)){
-  outputfolder <- "bgr_merged"
-}
+sample.folders <- strsplit(opt$input, ",")[[1]]
+outputfolder <- opt$output
 
 dir.create(outputfolder)
 cat("Reading the data\n")
@@ -181,16 +194,26 @@ cat("Number of cells: ", ncol(exprs), "\n")
 cat("Running UMAP\n")
 cat("\t 2D\n")
 cat("Running PCA\n")
-pca <- irlba::prcomp_irlba(t(exprs), n = 400)
-rownames(pca$x) <- colnames(exprs)
-umap2d <- run.umap(t(pca$x))
+if(nrow(exprs) > 400){
+  pca <- irlba::prcomp_irlba(t(exprs), n = 400)
+  rownames(pca$x) <- colnames(exprs)
+  umap2d <- run.umap(t(pca$x))
+}else{
+  umap2d <- run.umap(exprs)
+}
+
 umap2d <- as.data.frame(umap2d) %>% rownames_to_column("CellID")
 colnames(umap2d) <- c("CellID", "UMAP1", "UMAP2")
 umap2d <- umap2d %>% add_column(Batch = do.call("c", lapply(umap2d$CellID, function(x) strsplit(x, "_")[[1]][2])))
 write.table(umap2d, file=file.path(outputfolder, "UMAP2d.csv"), sep=",", quote = F, row.names = F)
 
 cat("\t 3D\n")
-umap3d <- run.umap(t(pca$x), n_dims=3)
+if(nrow(exprs) > 400){
+  umap3d <- run.umap(t(pca$x), n_dims=3)
+}else{
+  umap3d <- run.umap(exprs, n_dims = 3)
+}
+
 umap3d <- as.data.frame(umap3d) %>% rownames_to_column("CellID")
 colnames(umap3d) <- c("CellID", "UMAP1", "UMAP2", "UMAP3")
 umap3d <- umap3d %>% add_column(Batch = do.call("c", lapply(umap3d$CellID, function(x) strsplit(x, "_")[[1]][2])))
