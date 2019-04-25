@@ -119,6 +119,11 @@ make.analysis <- function(ex.path, ft.path, sample.name, V=2,
 
   keep.cells <- meta %>% filter(fracIntronic >= cut.fracIntron, CellRank <= maxCellRank) %>% pull(CellID) %>% as.character()
 
+  print(ggplot(meta) +
+    geom_point(aes(x = CellRank,
+                   y = fracIntronic,
+                   color = CellID %in% keep.cells)))
+
   ft <- ft[,keep.cells]
   ex <- ex[,keep.cells]
 
@@ -304,13 +309,21 @@ dir.create(out.dir, recursive = T, showWarnings = F)
 pdf(file.path(out.dir, "plots.pdf"))
 dfl <- full.analysis(args[1], args[2], args[3], args[4])
 
+sobj <- Seurat::CreateSeuratObject(dfl$umi$FT)
+sobj@data <- sobj@scale.data <- dfl$exprs
+sobj@var.genes <- dfl$hvg
+
 cat("Running 2D UMAP\n")
 umap2d.dfl <- run.umap(dfl$exprs[dfl$hvg, ])
+sobj <- Seurat::SetDimReduction(sobj, reduction.type = "umap", slot = "cell.embeddings", new.data = umap2d.dfl)
 
 cat("Running 3D UMAP\n")
 umap3d.dfl <- run.umap(dfl$exprs[dfl$hvg, ], n_dims = 3)
+sobj <- Seurat::SetDimReduction(sobj, reduction.type = "umap3d", slot = "cell.embeddings", new.data = umap3d.dfl)
 
 plot.umap(umap2d.dfl)
+
+saveRDS(sobj, file.path(out.dir, "seurat_object.rds"))
 
 cat("Plotting statistics\n")
 ggplot(
