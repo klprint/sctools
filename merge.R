@@ -194,10 +194,8 @@ cat("Number of cells: ", ncol(exprs), "\n")
 cat("Running UMAP\n")
 cat("\t 2D\n")
 if(nrow(exprs) > 400){
-  cat("Running SVD\n")
-  dp <- t(exprs) %*% exprs
-  pca <- list()
-  pca$x <- irlba::irlba(dp, nv = 50)$u
+  cat("Running PCA\n")
+  pca <- irlba::prcomp_irlba(t(exprs), n = 400)
   rownames(pca$x) <- colnames(exprs)
   umap2d <- run.umap(t(pca$x))
 }else{
