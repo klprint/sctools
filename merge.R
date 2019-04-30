@@ -1,238 +1,248 @@
-#!/usr/bin/env Rscript
-library(reticulate)
-use_condaenv("env_scanpy")
-py_config()
+#! /usr/bin/env Rscript
 
-library(tidyverse)
-library(mclust)
-library(Matrix)
+library(optparse)
 library(hdf5r)
+library(Matrix)
+library(tidyverse)
 
-run.umap <- function(exprs, hvg = NULL, n_dims=2){
-  umap <- import("umap")
+optList <- list(
+  make_option(
+    c("-i", "--input"),
+    type="character",
+    help="Comma separated input list",
+    default=NULL,
+    metavar="character"
+  ),
 
-  if(!is.null(hvg)){
-    exprs <- exprs[hvg,]
-  }
+  make_option(
+    c("-o", "--output"),
+    type="character",
+    help="Output folder path",
+    default=NULL,
+    metavar = "character"
+  ),
 
-  #u <- umap::umap(t(exprs), method="umap-learn", metric="correlation", min_dist=.3, n_neighbors=30, n_components=n_dims)
-  u <- umap$UMAP(metric = "correlation", min_dist = .3, n_neighbors = 30L, n_components = as.integer(n_dims))$fit_transform(t(exprs))
-  rownames(u) <- colnames(exprs)
-  print(head(u))
-  return(u)
-}
+  make_option(
+    c("-n", "--name"),
+    type="character",
+    help = "Output file name",
+    default="data",
+    metavar = "character"
+  ),
 
-union.merge <- function(mergelist, all.rn = NULL){
-  if(is.null(all.rn)){
-    cat("Getting all genes\n")
-    all.rn <- NULL
-    for(item in mergelist){
-      all.rn <- union(rownames(item), all.rn)
-    }
-  }
+  make_option(
+    c("-t", "--threads"),
+    type="numeric",
+    help="Number of cores",
+    default=3,
+    metavar = "integer"
+  )
+)
 
-  cat("Merging\n")
-
-  mergelist <- lapply(mergelist, function(x){
-    add.x <- all.rn[!(all.rn %in% rownames(x))]
-
-    if(length(add.x) < 1){
-      return(x[all.rn,])
-    }else{
-      add.mtx.x <- matrix(0, nrow=length(add.x), ncol=ncol(x))
-      rownames(add.mtx.x) <- add.x
-      o <- rbind(x, add.mtx.x)
-      return(o[all.rn, ])
-    }
+opt_parser <- OptionParser(option_list = optList)
+opt = parse_args(opt_parser)
 
 
-  })
+#####################
+##### FUNCTIONS #####
+#####################
+rem.batch <- function(mtx, l, ncores=3){
+  out <- pbmcapply::pbmclapply(unique(l), function(x){
+    tmp.mtx <- as.matrix(mtx[,l == x])
+    rs <- rowSums(mtx)
+    names(rs) <- rownames(mtx)
 
-  out <- do.call(cbind, mergelist)
+    tmp.mtx <- sqrt(t(
+      t(tmp.mtx) / colSums(tmp.mtx)
+    ))
 
-  return(out)
-}
+    rs <- sqrt(rs / sum(rs))
 
-plot.umap <- function(umap.coords){
-  factors <- do.call("c", lapply(rownames(umap.coords), function(x) strsplit(x, "_")[[1]][1]))
+    lm(tmp.mtx~rs)$residuals
+  }, mc.cores = ncores)
+
+  out <- do.call(cbind,
+                 out)
 
   return(
-    as_tibble(umap.coords) %>%
-      ggplot(aes(x=V1, y=V2)) +
-      geom_point(aes(color=factors), size=.25)
+    out
   )
 }
 
-remove.background <- function(exprs, empty.drops){
-  stopifnot(sum(rownames(exprs) == rownames(empty.drops)) == nrow(exprs))
-
-  exprs.drops <- matrix(sqrt(empty.drops/colSums(empty.drops)), ncol=1)
-  rownames(exprs.drops) <- rownames(empty.drops)
-  cat("Calculating dot product \n")
-  dp <- t(exprs) %*% exprs.drops
-  print(head(dp))
-
-  cat("Linear regression\n")
-  lmout <- lm(as.matrix(t(exprs)) ~ as.matrix(dp))$residuals
-  return(t(lmout))
+dim.reduce <- function(mtx, n = 100){
+  cat("Running PCA\n")
+  pca <- irlba::prcomp_irlba(mtx, n = n)
+  rownames(pca$x) <- rownames(mtx)
+  return(pca$x)
 }
 
-#### MAIN ####
-library(optparse)
+get.synbulk <- function(mtx, l){
+  synbulk <- lapply(unique(l), function(lsub){
+    tmp <- mtx[,l == lsub]
+    rowSums(tmp)
+  })
 
-optList <- list(
-  make_option(c("-i", "--input"),
-              type="character",
-              help="Comma separated list of process.R outputs (one folder per sample)",
-              default = NULL,
-              metavar = "character"),
+  tmp <- do.call(cbind, synbulk)
+  colnames(tmp) <- unique(l)
+  return(tmp)
+}
 
-  make_option(c("-o", "--output"),
-              type="character",
-              help="Oputput folder",
-              default = "bgr_merged",
-              metavar = "character")
-)
-opt_parser <- OptionParser(option_list = optList)
-opt = parse_args(opt_parser)
-# args = commandArgs(trailingOnly=TRUE)
+#########################
+if(is.null(opt$input)){
+  stop("Please specify input using the '-i' flag.")
+}
+
+if(is.null(opt$output)){
+  stop("Please specify an output folder using the '-o' flag.")
+}
+
+infiles <- opt$input
+infiles <- strsplit(infiles, ",")[[1]]
+
+use_genes <- NULL
+use_cells <- NULL
+
+meta.data <- list()
+meta.data$batches <- do.call("c",lapply(infiles, function(x) rev(strsplit(x, "/")[[1]])[2]))
+names(meta.data$batches) <- infiles
+
+cat("Reading cell and gene annotations\n")
+for(f in infiles){
+  cat("\t file:", f, "\n")
+  h5 <- H5File$new(f, mode="r")
+  use_genes <- unique(union(use_genes, h5[["umi/ft/genes"]][]))
+  use_cells <- c(use_cells, h5[["umi/ft/cells"]][])
+  meta.data$hvg <- union(meta.data$hvg, h5[["umi/ft/hvg"]][])
+
+
+  meta.data$batch <- c(meta.data[["batch"]],
+                       rep(meta.data$batches[f], length(h5[["umi/ft/cells"]][])))
+  h5$close_all()
+}
+
+names(meta.data$batch) <- NULL
+
+mtx <- Matrix(0, ncol = length(use_cells),
+              nrow = length(use_genes),
+              dimnames = list(use_genes, use_cells),
+              sparse = T)
+
+cat("\nReading matrix of the following dimensions:\n")
+print(dim(mtx))
+
+##### Reading the data #####
+
+cat("\nReading the matrices\n")
+# for(f in infiles){
+#   cat("\t file:", f, "\n")
+#   h5 <- H5File$new(f, mode="r")
+#   tmp_genes <- h5[["umi/ft/genes"]][]
+#   tmp_cells <- h5[["umi/ft/cells"]][]
+#   tmp_mtx <- Matrix(h5[["umi/ft/counts"]][,], sparse=T,
+#                     dimnames = list(tmp_genes, tmp_cells))
 #
-# # 1. Comma separated list of "process.R" output folders
-# if( length( args ) < 1  ){
-#   stop("At least one arguments need to be provided", call. = F)
+#   h5$close_all()
+#
+#   mtx[tmp_genes, tmp_cells] <- tmp_mtx
 # }
 
-sample.folders <- strsplit(opt$input, ",")[[1]]
-outputfolder <- opt$output
+tmp <- pbmcapply::pbmclapply(infiles, function(f){
+  h5 <- H5File$new(f, mode="r")
+  tmp_genes <- h5[["umi/ft/genes"]][]
+  tmp_cells <- h5[["umi/ft/cells"]][]
+  tmp_mtx <- Matrix(h5[["umi/ft/counts"]][,], sparse=T,
+                    dimnames = list(tmp_genes, tmp_cells))
 
-dir.create(outputfolder)
-cat("Reading the data\n")
+  h5$close_all()
 
-hvgs <- NULL
-exprs.list <- list()
-umi.exon <- list()
-umi.ft <- list()
-i <- 1
-for(s in sample.folders){
-  cat("Reading ", s, "\n")
+  return(tmp_mtx)
+}, mc.cores = opt$threads)
+names(tmp) <- infiles
 
-  h5file <- H5File$new(file.path(s, "data.h5"), mode = "r")
-
-  cat("  full transcript UMIs")
-  hvgs <- union(hvgs, h5file[["umi"]][["ft"]][["hvg"]][])
-  all.genes <- h5file[["umi"]][["ft"]][["genes"]][]
-  all.exon.genes <- h5file[["umi"]][["exon"]][["genes"]][]
-  cids <- h5file[["umi"]][["ft"]][["cells"]][]
-
-  missing.genes <- hvgs[!(hvgs %in% all.genes)]
-  present.genes <- hvgs[hvgs %in% all.genes]
-
-  cat("  empty droplets\n")
-  empty.genes <- h5file[["umi"]][["empty"]][["genes"]][]
-  empty.drops <- matrix(h5file[["umi"]][["empty"]][["counts"]][empty.genes %in% present.genes], ncol=1)
-  rownames(empty.drops) <- empty.genes[empty.genes %in% present.genes]
-
-  if(length(missing.genes) > 0){
-    filling.mat <- matrix(0, nrow = length(missing.genes),
-                          ncol=length(cids))
-    rownames(filling.mat) <- missing.genes
-  }
-
-  cat("  UMI matrix\n")
-  tmp <- as.matrix(h5file[["umi"]][["ft"]][["counts"]][
-    all.genes %in% present.genes,
-  ])
-  rownames(tmp) <- all.genes[all.genes %in% present.genes]
-
-  if(length(missing.genes) > 0){
-    cat("Filling genes (",length(missing.genes),")\n")
-    tmp <- rbind(tmp, filling.mat)
-    empty.drops <- matrix(c(empty.drops[,1], rep(0, length(missing.genes))), ncol=1)
-    rownames(empty.drops) <- c(present.genes, missing.genes)
-  }
-
-  tmp <- tmp[hvgs, ]
-  empty.drops <- matrix(empty.drops[hvgs, ],ncol=1)
-  rownames(empty.drops) <- hvgs
-  cat("------------------\n")
-  print(head(tmp[,1:5]))
-  print(head(empty.drops))
-  cat("------------------\n")
-
-  colnames(tmp) <- h5file[["umi"]][["ft"]][["cells"]][]
-  sf <- h5file[["umi"]][["ft"]][["sf"]][]
-
-  h5file$close_all()
-
-  cat("Normalizing\n")
-  umi.ft[[i]] <- tmp
-  tmp <- sqrt(tmp/sf)
-  # empty.drops <- matrix(sqrt(empty.drops / sum(empty.drops[,1])),
-  #                       ncol=1)
-  # rownames(empty.drops) <- hvgs
-
-
-  stopifnot(nrow(empty.drops) == nrow(tmp))
-
-  cat("Removing backgorund\n")
-  tmp <- remove.background(tmp, empty.drops)
-
-  exprs.list[[i]] <- tmp
-  print(exprs.list[[i]][1:5,1:5])
-
-  i <- i+1
+cat("\tParsing\n")
+for(f in names(tmp)){
+  cat("\t", f, "\n")
+  mtx[rownames(tmp[[f]]),
+      colnames(tmp[[f]])] <- tmp[[f]]
 }
 
-cat("Number of highly variable genes read from files: ", length(hvgs), "\n")
+rm(tmp)
+
+##### Writing UMI matrix #####
+dir.create(opt$output, showWarnings = F)
+cat("Writing sparse matrix rds file\n\n")
+
+saveRDS(mtx, file=file.path(opt$output, paste0(opt$name, ".rds")))
 
 
-cat("Merging the matrices\n")
-exprs <- union.merge(exprs.list, hvgs)
-umi <- union.merge(umi.ft, hvgs)
-cat("Number of cells: ", ncol(exprs), "\n")
+##### Stat plots #####
+pdf(file.path(
+  opt$output,
+  "stat_plots.pdf",
+  width=7, height=4
+))
 
-cat("Running UMAP\n")
-cat("\t 2D\n")
-if(nrow(exprs) > 400){
-  cat("Running PCA\n")
-  pca <- irlba::prcomp_irlba(t(exprs), n = 400)
-  rownames(pca$x) <- colnames(exprs)
-  umap2d <- run.umap(t(pca$x))
-}else{
-  umap2d <- run.umap(exprs)
+ggplot() +
+  geom_density(aes(x=colSums(mtx),
+                   fill=meta.data$batch,
+                   group=meta.data$batch),
+               alpha=.5) +
+  scale_fill_discrete(name="Run") +
+  xlab("nUMI")
+
+ggplot() +
+  geom_density(aes(x=colSums(mtx>0),
+                   fill=meta.data$batch,
+                   group=meta.data$batch),
+               alpha=.5) +
+  scale_fill_discrete(name="Run") +
+  xlab("nGenes")
+
+ggplot(NULL,
+       aes(x = colSums(mtx),
+           y = colSums(mtx > 0),
+           color = meta.data$batch)) +
+  geom_point(
+    size=.1
+  ) +
+  geom_rug(alpha=.1) +
+  xlab("nUMI") +
+  ylab("nGenes") +
+  scale_color_discrete(name="Run") +
+  scale_x_log10() +
+  scale_y_log10()
+
+pheatmap::pheatmap(
+  cor(
+    get.synbulk(mtx, meta.data$batch)
+  )
+)
+
+dev.off()
+
+
+##### Processing data #####
+cat("Normalizing\n")
+br.mtx <- t(rem.batch(mtx[rownames(mtx) %in% meta.data$hvg, ],
+                      meta.data$batch, opt$threads)) # cells x genes
+
+if(ncol(br.mtx) > 400){
+  br.mtx <- dim.reduce(br.mtx, n=400)
 }
 
-umap2d <- as.data.frame(umap2d) %>% rownames_to_column("CellID")
-colnames(umap2d) <- c("CellID", "UMAP1", "UMAP2")
-umap2d <- umap2d %>% add_column(Batch = do.call("c", lapply(umap2d$CellID, function(x) strsplit(x, "_")[[1]][2])))
-write.table(umap2d, file=file.path(outputfolder, "UMAP2d.csv"), sep=",", quote = F, row.names = F)
 
-cat("\t 3D\n")
-if(nrow(exprs) > 400){
-  umap3d <- run.umap(t(pca$x), n_dims=3)
-}else{
-  umap3d <- run.umap(exprs, n_dims = 3)
-}
+cat("Running UMAP: ")
+cat("2D ")
+meta.data$umap2d <- umap::umap(br.mtx, method="umap-learn", metric="correlation",
+                               min_dist=.3, n_neighbors=30)
+cat("Clusterable (15D) ")
+meta.data$umap15d <- umap::umap(br.mtx, method="umap-learn", metric="correlation",
+                                min_dist=0.0, n_neighbors=30, n_components=15)
 
-umap3d <- as.data.frame(umap3d) %>% rownames_to_column("CellID")
-colnames(umap3d) <- c("CellID", "UMAP1", "UMAP2", "UMAP3")
-umap3d <- umap3d %>% add_column(Batch = do.call("c", lapply(umap3d$CellID, function(x) strsplit(x, "_")[[1]][2])))
-write.table(umap3d, file=file.path(outputfolder, "UMAP3d.csv"), sep=",", quote = F, row.names = F)
+cat("3D\n")
+meta.data$umap3d <- umap::umap(br.mtx, method="umap-learn", metric="correlation",
+                               min_dist=0.0, n_neighbors=30, n_components=3)
 
-
-cat("Writing HDF5 files\n")
-
-h5 <- H5File$new(file.path(outputfolder, "data.h5"), mode = "w")
-
-h5[["umi_ft"]] <- umi
-h5[["umi_cells"]] <- colnames(umi)
-h5[["umi_genes"]] <- rownames(umi)
-
-h5[["exprs"]] <- exprs
-h5[["exprs_cells"]] <- colnames(exprs)
-h5[["exprs_genes"]] <- rownames(exprs)
-
-h5[["umap_2d"]] <- umap2d
-h5[["umap_3d"]] <- umap3d
-
-h5$close_all()
+cat("Writing meta data\n")
+saveRDS(meta.data, file=file.path(opt$output,
+                                  paste0(opt$name,"_metadata.rds")))
