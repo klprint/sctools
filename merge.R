@@ -1,4 +1,7 @@
 #! /usr/bin/env Rscript
+library(reticulate)
+use_condaenv("env_scanpy")
+py_config()
 
 library(optparse)
 library(hdf5r)
