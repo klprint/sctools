@@ -196,7 +196,7 @@ saveRDS(mtx, file=file.path(opt$output, paste0(opt$name, ".rds")))
 pdf(file.path(
   opt$output,
   "stat_plots.pdf"),
-  width=7, height=4
+  width=10, height=7.5
 )
 
 ggplot() +
@@ -229,11 +229,13 @@ ggplot(NULL,
   scale_x_log10() +
   scale_y_log10()
 
-pheatmap::pheatmap(
-  cor(
-    get.synbulk(mtx, meta.data$batch)
+if(length(meta.data$batches) > 1){
+  pheatmap::pheatmap(
+    cor(
+      get.synbulk(mtx, meta.data$batch)
+    )
   )
-)
+}
 
 dev.off()
 
@@ -265,3 +267,22 @@ meta.data$empty.drops <- empty.drops
 cat("Writing meta data\n")
 saveRDS(meta.data, file=file.path(opt$output,
                                   paste0(opt$name,"_metadata.rds")))
+
+
+pdf(file.path(
+  opt$output,
+  "umap.pdf"),
+  width=10, height=7.5
+)
+
+ggplot() +
+  geom_point(
+    aes(
+      x = meta.data$umap2d$layout[,1],
+      y = meta.data$umap2d$layout[,2],
+      color = meta.data$batch
+    ),
+    size=1
+  )
+
+dev.off()
