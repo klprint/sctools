@@ -178,9 +178,9 @@ saveRDS(mtx, file=file.path(opt$output, paste0(opt$name, ".rds")))
 ##### Stat plots #####
 pdf(file.path(
   opt$output,
-  "stat_plots.pdf",
+  "stat_plots.pdf"),
   width=7, height=4
-))
+)
 
 ggplot() +
   geom_density(aes(x=colSums(mtx),
