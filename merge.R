@@ -49,11 +49,18 @@ opt = parse_args(opt_parser)
 #####################
 ##### FUNCTIONS #####
 #####################
-rem.batch <- function(mtx, l, ncores=3){
-  out <- pbmcapply::pbmclapply(unique(l), function(x){
+rem.batch <- function(mtx, l, empty.drops){
+  out <- lapply(unique(l), function(x){
+    cat("Removing batch-effect from", x, "\n")
     tmp.mtx <- as.matrix(mtx[,l == x])
-    rs <- rowSums(mtx)
-    names(rs) <- rownames(mtx)
+    # rs <- rowSums(mtx)
+    # names(rs) <- rownames(mtx)
+    rs <- empty.drops[[x]]
+
+    # Filling the empty drop UMIs with 0 for not detected genes
+    genes.not.in.empty <- rownames(tmp.mtx)[!(rownames(tmp.mtx) %in% names(rs))]
+    rs[genes.not.in.empty] <- 0
+    rs <- rs[rownames(tmp.mtx)]
 
     tmp.mtx <- sqrt(t(
       t(tmp.mtx) / colSums(tmp.mtx)
@@ -61,8 +68,8 @@ rem.batch <- function(mtx, l, ncores=3){
 
     rs <- sqrt(rs / sum(rs))
 
-    lm(tmp.mtx~rs)$residuals
-  }, mc.cores = ncores)
+    lm(as.matrix(tmp.mtx)~rs)$residuals
+  })
 
   out <- do.call(cbind,
                  out)
@@ -109,6 +116,8 @@ meta.data <- list()
 meta.data$batches <- do.call("c",lapply(infiles, function(x) rev(strsplit(x, "/")[[1]])[2]))
 names(meta.data$batches) <- infiles
 
+empty.drops <- list()
+
 cat("Reading cell and gene annotations\n")
 for(f in infiles){
   cat("\t file:", f, "\n")
@@ -120,6 +129,11 @@ for(f in infiles){
 
   meta.data$batch <- c(meta.data[["batch"]],
                        rep(meta.data$batches[f], length(h5[["umi/ft/cells"]][])))
+
+
+  empty.drops[[meta.data$batches[f]]] <- h5[["/umi/empty/counts"]][]
+  names(empty.drops[[meta.data$batches[f]]]) <- h5[["/umi/empty/genes"]][]
+
   h5$close_all()
 }
 
@@ -227,7 +241,8 @@ dev.off()
 ##### Processing data #####
 cat("Normalizing\n")
 br.mtx <- t(rem.batch(mtx[rownames(mtx) %in% meta.data$hvg, ],
-                      meta.data$batch, opt$threads)) # cells x genes
+                      meta.data$batch,
+                      empty.drops)) # cells x genes
 
 if(ncol(br.mtx) > 400){
   br.mtx <- dim.reduce(br.mtx, n=400)
@@ -246,6 +261,7 @@ cat("3D\n")
 meta.data$umap3d <- umap::umap(br.mtx, method="umap-learn", metric="correlation",
                                min_dist=0.0, n_neighbors=30, n_components=3)
 
+meta.data$empty.drops <- empty.drops
 cat("Writing meta data\n")
 saveRDS(meta.data, file=file.path(opt$output,
                                   paste0(opt$name,"_metadata.rds")))
