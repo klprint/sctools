@@ -286,3 +286,10 @@ ggplot() +
   )
 
 dev.off()
+
+cat("Writing bg removed expression\n")
+saveRDS(br.mtx,
+        file=file.path(
+          opt$output,
+          "data_nrm.rds"
+        ))
