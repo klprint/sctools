@@ -81,9 +81,11 @@ rem.batch <- function(mtx, l, empty.drops){
 
 dim.reduce <- function(mtx, n = 100){
   cat("Running PCA\n")
-  pca <- irlba::prcomp_irlba(mtx, n = n)
-  rownames(pca$x) <- rownames(mtx)
-  return(pca$x)
+  # pca <- irlba::prcomp_irlba(mtx, n = n)
+  # rownames(pca$x) <- rownames(mtx)
+  svd <- irlba::irlba(mtx, nv=n)$u
+
+  return(svd)
 }
 
 get.synbulk <- function(mtx, l){
