@@ -249,7 +249,7 @@ br.mtx <- t(rem.batch(mtx[rownames(mtx) %in% meta.data$hvg, ],
                       empty.drops)) # cells x genes
 
 if(ncol(br.mtx) > 400){
-  br.mtx <- dim.reduce(br.mtx, n=400)
+  br.mtx <- dim.reduce(br.mtx, n=100)
 }
 
 
